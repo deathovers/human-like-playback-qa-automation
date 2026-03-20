@@ -7,30 +7,39 @@ class HumanSimulator {
 
   async randomDelay(min = 1000, max = 3000) {
     const delay = Math.floor(Math.random() * (max - min + 1)) + min;
-    logger.info(`HumanSimulator: Waiting for ${delay}ms...`);
+    logger.info(`Waiting for ${delay}ms...`);
     await this.page.waitForTimeout(delay);
   }
 
-  async interactWithPlayButton(selector = '.play-button, video') {
-    logger.info('HumanSimulator: Waiting for network idle...');
-    await this.page.waitForLoadState('networkidle');
+  async interactWithPlayer(selector = 'video, .play-button, [aria-label="Play"]') {
+    logger.info('Attempting to interact with the player...');
     
-    await this.randomDelay(1000, 3000);
-
     try {
-      const element = this.page.locator(selector).first();
-      await element.waitFor({ state: 'visible', timeout: 10000 });
-      
-      logger.info('HumanSimulator: Scrolling element into view...');
-      await element.scrollIntoViewIfNeeded();
-      
-      await this.randomDelay(500, 1500);
-      
-      logger.info('HumanSimulator: Clicking element...');
-      await element.click({ delay: Math.random() * 200 });
+      await this.page.waitForLoadState('networkidle');
+      await this.randomDelay();
+
+      const element = await this.page.$(selector);
+      if (element) {
+        logger.info('Element found, scrolling into view...');
+        await element.scrollIntoViewIfNeeded();
+        await this.randomDelay(500, 1500);
+        
+        logger.info('Clicking element...');
+        const box = await element.boundingBox();
+        if (box) {
+          await this.page.mouse.click(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+            { delay: Math.random() * 200 }
+          );
+        } else {
+          await element.click({ delay: Math.random() * 200 });
+        }
+      } else {
+        logger.warn('Player element not found for interaction.');
+      }
     } catch (error) {
-      logger.error(`HumanSimulator: Failed to interact with play button: ${error.message}`);
-      throw error;
+      logger.error(`Interaction failed: ${error.message}`);
     }
   }
 }
