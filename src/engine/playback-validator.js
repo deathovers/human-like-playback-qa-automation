@@ -6,80 +6,76 @@ class PlaybackValidator {
   }
 
   async validate(durationMs = 10000) {
-    logger.info(`PlaybackValidator: Starting validation for ${durationMs}ms...`);
-    
+    logger.info(`Starting playback validation for ${durationMs}ms...`);
     const startTime = Date.now();
     let timeToFirstFrameMs = null;
 
-    const videoExists = await this.page.evaluate(() => {
-      const video = document.querySelector('video');
-      return video && video.readyState >= 2;
-    });
-
-    if (!videoExists) {
-      throw new Error('PLAYER_ERROR: Video element not found or readyState < 2');
-    }
-
-    let isPlaying = false;
-    for (let i = 0; i < 50; i++) {
-      const currentTime = await this.page.evaluate(() => {
+    try {
+      // 1. Initial Check
+      const videoExists = await this.page.evaluate(() => {
         const video = document.querySelector('video');
-        return video ? video.currentTime : 0;
-      });
-      
-      if (currentTime > 0) {
-        isPlaying = true;
-        timeToFirstFrameMs = Date.now() - startTime;
-        break;
-      }
-      await this.page.waitForTimeout(100);
-    }
-
-    if (!isPlaying) {
-      throw new Error('TIMEOUT: Video failed to start playing within 5 seconds');
-    }
-
-    logger.info(`PlaybackValidator: Video started playing. Time to first frame: ${timeToFirstFrameMs}ms`);
-
-    let previousTime = -1;
-    const checkInterval = 2000;
-    const checks = Math.ceil(durationMs / checkInterval);
-
-    for (let i = 0; i < checks; i++) {
-      await this.page.waitForTimeout(checkInterval);
-      
-      const state = await this.page.evaluate(() => {
-        const video = document.querySelector('video');
-        if (!video) return null;
-        return {
-          currentTime: video.currentTime,
-          paused: video.paused
-        };
+        return video && video.readyState >= 2; // HAVE_CURRENT_DATA
       });
 
-      if (!state) {
-        throw new Error('PLAYER_ERROR: Video element disappeared during playback');
+      if (!videoExists) {
+        throw new Error('Video element not found or not ready.');
       }
 
-      if (state.paused) {
-        throw new Error('PLAYER_ERROR: Video paused unexpectedly');
+      // 2. Start Buffer Check
+      await this.page.waitForFunction(() => {
+        const video = document.querySelector('video');
+        return video && video.currentTime > 0;
+      }, { timeout: 5000 });
+      
+      timeToFirstFrameMs = Date.now() - startTime;
+      logger.info(`Time to first frame: ${timeToFirstFrameMs}ms`);
+
+      // 3. Continuity Check
+      let previousTime = -1;
+      let cumulativePlayback = 0;
+      const checkInterval = 2000;
+      const iterations = Math.ceil(durationMs / checkInterval);
+
+      for (let i = 0; i < iterations; i++) {
+        await this.page.waitForTimeout(checkInterval);
+        
+        const state = await this.page.evaluate(() => {
+          const video = document.querySelector('video');
+          if (!video) return null;
+          return {
+            currentTime: video.currentTime,
+            paused: video.paused
+          };
+        });
+
+        if (!state) throw new Error('Video element lost during playback.');
+        if (state.paused) throw new Error('Video paused unexpectedly.');
+        if (state.currentTime <= previousTime) throw new Error('Playback stalled, currentTime not advancing.');
+
+        cumulativePlayback += (state.currentTime - (previousTime === -1 ? state.currentTime : previousTime));
+        previousTime = state.currentTime;
+        logger.info(`Playback progressing... currentTime: ${state.currentTime}`);
       }
 
-      if (state.currentTime <= previousTime) {
-        throw new Error('PLAYER_ERROR: Video currentTime is not advancing');
-      }
+      return {
+        success: true,
+        metrics: {
+          startTime: new Date(startTime).toISOString(),
+          timeToFirstFrameMs,
+          playbackDurationSec: cumulativePlayback
+        }
+      };
 
-      logger.info(`PlaybackValidator: Continuity check passed. currentTime: ${state.currentTime}`);
-      previousTime = state.currentTime;
+    } catch (error) {
+      logger.error(`Validation failed: ${error.message}`);
+      return {
+        success: false,
+        error: {
+          code: 'PLAYER_ERROR',
+          message: error.message
+        }
+      };
     }
-
-    const playbackDurationSec = (Date.now() - startTime) / 1000;
-    logger.info(`PlaybackValidator: Validation successful. Total duration: ${playbackDurationSec}s`);
-
-    return {
-      timeToFirstFrameMs,
-      playbackDurationSec
-    };
   }
 }
 
