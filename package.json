@@ -2,12 +2,11 @@
   "name": "human-like-playback-qa-automation",
   "version": "1.0.0",
   "description": "Automated QA system using Playwright in headed mode to simulate human-like video playback interactions and validation.",
-  "main": "index.js",
+  "main": "src/runner.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node src/runner.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
     "playwright": "^1.42.1",
     "playwright-extra": "^4.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
