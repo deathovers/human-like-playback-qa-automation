@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Automated QA system using Playwright in headed mode to simulate human-like video playback interactions and validation.",
   "main": "src/runner.js",
-  "type": "module",
   "scripts": {
     "start": "node src/runner.js"
   },
